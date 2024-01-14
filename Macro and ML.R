@@ -10,7 +10,11 @@ colnames(data)
 x <- data$sasdate
 # we drop the rows which have no date
 data <- data[(x!="Transform:" & nchar(x)>2),]
-y<-data[,1]
+t<-data[,1]
+
+print(paste("Deleted", length(t) - length(x), "row(s) because of absent date"), quote=FALSE)
+
+
 
 # Variable names
 series <- colnames(data[,2:length(data)])
