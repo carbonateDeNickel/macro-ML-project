@@ -21,13 +21,23 @@ series <- colnames(data[,2:length(data)])
 
 #Selection of variables of interest : à faire
 
+
+#drop na
+data.complete<-na.omit(data)
+print(paste("Deleted", length(t) - length(data.complete[,1]), "row(s) because of NAs"), quote=FALSE)
+# Considering only fully complete rows leads to deleting 189 rows out of 259.
+# Thus it seems better to first choose a limited set of variables to consider.
+
+# Let us see what variables are present in the dataset at each date,
+# and see if it seems reasonable to consider only those variables.
+data.complete.columns <- data[, colSums(is.na(data)) == 0]
+print(paste("Deleted", length(data) - length(data.complete.columns), "variable(s) because of NAs"), quote=FALSE)
+
+
 #Penalized linear model : Ridge Regression
 #install.packages("glmnet")
 library(ggplot2)
 library(glmnet)
-
-#drop na 
-data<-na.omit(data)
 
 set.seed(123)
 
