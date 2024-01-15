@@ -1,9 +1,10 @@
-library(dplyr)
+library(dplyr) # data manipulation library
 
 
 #FRED data
 file <- "data/2023-12 - quarter.csv" 
-data <- read.csv(file = file)
+data.with.definitions <- read.csv(file = file)
+data <- data.with.definitions[3:nrow(data.with.definitions), ] # we drop the first two rows which are not data
 
 colnames(data)
 
@@ -34,29 +35,49 @@ data.complete.columns <- data[, colSums(is.na(data)) == 0]
 print(paste("Deleted", length(data) - length(data.complete.columns), "variable(s) because of NAs"), quote=FALSE)
 
 
-#Penalized linear model : Ridge Regression
+
+####### ATTENTION au caractère time-series des données
+####### il ne faut pas oublier de prendre en compte les dates précédentes
+####### et pas seulement les variables contemporaines
+
+
+### Penalized linear model : Ridge Regression
+
 #install.packages("glmnet")
 library(ggplot2)
 library(glmnet)
 
 set.seed(123)
 
-# Split data between train and test samples
-train_indices <- sample(1:nrow(data), 0.7 * nrow(data))
-train_data <- data[train_indices, ]
-test_data <- data[-train_indices, ]
+
+## As a first step and benchmark, we first reason in a "cross-sectional" way.
+## However, we don't forget that the main aim of our work is forecasting
+## So we'll try to predict GDP using the value of other variables at date t-1
+
+# we exclude the last row of x so as to induce a shift between dependent and independent variables
 
 
-x_train <- data.matrix(train_data[,c("GPDIC1","pcecc96","INDPRO","GCEC1","EXPGSC1","IMPGSC1","CPIAUCSL",
+##### Problème : certaines des variables mentionnées ont été supprimées car contenant des NA
+##### Il faut donc faire des choix : soit on supprime ces variables pour utiliser toute l'étendue temporelles des données
+##### soit on restreint l'étendue temporelle des données pour conserver ces variables
+x <- data.matrix(data.complete.columns[-nrow(data.complete.columns),c("GPDIC1","pcecc96","INDPRO","GCEC1","EXPGSC1","IMPGSC1","CPIAUCSL",
                                   "FEDFUNDS","UNRATE","S_P_500","NASDAQCOM","EXUSEU","EXJPUS","M1REAL", "M2REAL",
                                   "GS10","BUSLOANSx","consumerx")])
+# we exclude the first row of y for the same reason
+y <- data.complete.columns[-1,"GDPC1"]
 
-y_train <- train_data$GDPC1
 
-x_test <- data.matrix(test_data[,c("GPDIC1","pcecc96","INDPRO","GCEC1","EXPGSC1","IMPGSC1","CPIAUCSL",
-                                   "FEDFUNDS","UNRATE","S_P_500","NASDAQCOM","EXUSEU","EXJPUS","M1REAL", "M2REAL",
-                                   "GS10","BUSLOANSx","consumerx")])
-y_test <- test_data$GDPC1
+# Split data between train and test samples
+# Remark: the fact that each y_t corresponds to a single date x_{t-1} allows to
+#         split randomly without worrying about the autocorrelation of the data
+
+train_indices <- sample(1:nrow(x), 0.7 * nrow(x))
+
+x_train <- x[train_indices,]
+y_train <- y[train_indices]
+
+x_test <- x[-train_indices,]
+y_test <- y[-train_indices]
 
 
 # Normalizing data
@@ -67,7 +88,7 @@ x_test <- scale(x_test)
 lambda_seq <- 10^seq(2, -2, by = -.1)
 
 # Using cross validation glmnet
-ridge_cv <- cv.glmnet(x_train, y_train, alpha = 0, lambda = lambda_seq)
+ridge_cv <- cv.glmnet(x_train, y_train, alpha = 0, lambda = lambda_seq) # alpha = 0 for ridge regression
 # Best lambda value
 best_lambda <- ridge_cv$lambda.min
 
@@ -93,3 +114,66 @@ print(paste("R-squared:", rsquared))
 
 
 
+## Now, let's take more deeply into account the time-series aspect of our data
+
+# To keep using usual syntax of ML algorithms,
+# where X and Y are "contemporaneous",
+# we need to transform our data, especially the "independent" variables,
+# so that X features the lagged values
+data_nodate <- data[, -1]
+X_primitive <- data_nodate[, -1]
+Y_primitive <- data_nodate[, 1]
+
+
+# For the moment, let's set a parameter p to account for the number of lags that we consider.
+# Then, we can improve the process and make a function from this.
+parameter_p <- 4
+
+# We bind the lagged values of the explanatory variables
+X_cross_sectional <- X_primitive[parameter_p:(nrow(X_primitive)-1), ] # here lag == 1
+for (lag in 2:parameter_p) {
+    X_cross_sectional <- cbind(X_cross_sectional, X_primitive[(parameter_p+1-lag):(nrow(X_primitive)-lag), ])
+}
+
+Y_cross_sectional <- Y_primitive[(parameter_p+1):length(Y_primitive)]
+
+
+
+# A function to industrialize the process
+
+produce_cross_sectional_data <- function(data, p, Y_variable=1, X_variables=2:ncol(data), data_has_date_column=FALSE) {
+    # data: dataframe containing the data
+    # p: number of lags to consider ; p >= 1
+    # Y_variable: index of the column of data containing the dependent variable
+    # X_variables: indices of the columns of data containing the independent variables
+    # data_has_date_column: whether the first column of data contains the dates or not
+    if (data_has_date_column) {
+        data_nodate <- data[, -1]
+    } else {
+        data_nodate <- data
+    }
+
+    X_primitive <- data_nodate[, X_variables]
+    Y_primitive <- data_nodate[, Y_variable]
+
+    X_cross_sectional <- X_primitive[p:(nrow(X_primitive)-1), ] # here lag == 1
+    for (lag in 2:p) {
+        X_cross_sectional <- cbind(X_cross_sectional, X_primitive[(p+1-lag):(nrow(X_primitive)-lag), ])
+    }
+
+    Y_cross_sectional <- Y_primitive[(p+1):length(Y_primitive)]
+
+    return(c(X_cross_sectional, Y_cross_sectional))
+}
+
+
+
+
+
+
+
+### Neural Networks
+library(tensorflow)
+library(keras)
+
+# given the randomness of the train/test split, we can reuse it
