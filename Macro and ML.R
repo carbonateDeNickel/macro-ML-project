@@ -398,6 +398,9 @@ mse_global_linear <- res_whole_training_linear[[2]]
 best_p_linear <- res_whole_training_linear[[3]]
 mse_cv_linear <- res_whole_training_linear[[4]]
 
+print(paste("Mean squared error (on the test set) of the best model : ", mse_global_linear, sep=""))
+print(paste("Best p : ", best_p_linear, sep=""))
+print(paste("Mean squared errors (validation process) for each p : ", paste(mse_cv_linear, sep="", collapse=", "), sep=""))
 
 
 
