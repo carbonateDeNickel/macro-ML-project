@@ -260,7 +260,7 @@ get_train_validation_sets <- function(X, Y, t, p) {
 # - determine the related global training set
 # - for each date t in the training set: determine the related train/validation sets, train the model, and compute the mean squared error
 # - return the global mean squared error
-cross_validation_step_linear <- function(data=data_nodate_global, Y_index=1, X_indices=1:ncol(data_nodate_global), p=1, test_amount=test_amount_global, lambda_seq=lambda_seq_global) {
+cross_validation_step_linear <- function(data=data_nodate_global, Y_index=1, X_indices=1:ncol(data_nodate_global), p=1, test_amount=test_amount_global, lambda_seq=lambda_seq_global, validation_proportion=0.05) {
     print(paste("Cross-validation -- step p = ", p, " : starting", sep=""))
     # Produce pseudo-cross-sectional data, specially adapted to lag p
     res <- produce_cross_sectional_data(data, p, Y_index, X_indices)
@@ -277,8 +277,10 @@ cross_validation_step_linear <- function(data=data_nodate_global, Y_index=1, X_i
 
     # For each date t in the training set: determine the related train/validation sets, train the model, and compute the mean squared error
     mse <- 0
-    for (t in train_indices) {
-        print(paste("Cross-validation -- step p = ", p, " : date t = ", t, sep=""))
+    validation_indices <- sample(train_indices, floor(validation_proportion * length(train_indices)))
+    for (i_t in 1:length(validation_indices)) {
+        t <- validation_indices[i_t]
+        print(paste("Cross-validation -- step p = ", p, " : validation date t = ", t, " i.e. substep ", i_t, " / ", length(validation_indices), sep=""))
         # Get the train and validation sets for date t (NB : the validation set is a single observation)
         res <- get_train_validation_sets(X_cross_sectional, Y_cross_sectional, t, p)
         X_train <- res[[1]]
@@ -305,7 +307,7 @@ cross_validation_step_linear <- function(data=data_nodate_global, Y_index=1, X_i
         # Actualize the mean squared error
         mse <- mse + (pred - Y_validation)^2
     }
-    mse <- mse / length(train_indices)
+    mse <- mse / length(validation_indices)
     return(mse)
 }
 
@@ -333,11 +335,11 @@ cross_validation_step_linear <- function(data=data_nodate_global, Y_index=1, X_i
 # - fit the model on the complete training set, for the best p
 # - test the model on the test set and compute the mean squared error
 # - return the best model itself, its mean squared error (on the test set), the best p, the mean squared errors for each p
-whole_training_linear <- function(data=data_nodate_global, Y_index=1, X_indices=1:ncol(data_nodate_global), p_max=p_max_global, test_amount=test_amount_global, lambda_seq=lambda_seq_global) {
+whole_training_linear <- function(data=data_nodate_global, Y_index=1, X_indices=1:ncol(data_nodate_global), p_max=p_max_global, test_amount=test_amount_global, lambda_seq=lambda_seq_global, validation_proportion=0.05) {
     # Execute cross-validation steps for each p from 1 to p_max, and store the mean squared errors of each step
     mse_cv <- rep(0, p_max)
     for (p in 1:p_max) {
-        mse_cv[p] <- cross_validation_step_linear(data, Y_index, X_indices, p, test_amount, lambda_seq)
+        mse_cv[p] <- cross_validation_step_linear(data, Y_index, X_indices, p, test_amount, lambda_seq, validation_proportion)
         print(paste("Cross-validation -- step p = ", p, " : done", sep=""))
         print(paste("---> mean squared error (p = ", p, ") : ", mse_cv[p], sep=""))
         print("-----------------------------------------------")
@@ -385,7 +387,7 @@ whole_training_linear <- function(data=data_nodate_global, Y_index=1, X_indices=
     pred <- predict(best_fit, newx = X_test)
 
     # MSE
-    mse_global <- mean((test_predictions - Y_test)^2)
+    mse_global <- mean((pred - Y_test)^2)
 
     return(list(best_fit, mse_global, best_p, mse_cv))
 }
