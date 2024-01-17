@@ -57,15 +57,22 @@ set.seed(123)
 # we exclude the last row of x so as to induce a shift between dependent and independent variables
 
 
-##### Problème : certaines des variables mentionnées ont été supprimées car contenant des NA
-##### Il faut donc faire des choix : soit on supprime ces variables pour utiliser toute l'étendue temporelles des données
-##### soit on restreint l'étendue temporelle des données pour conserver ces variables
-x <- data.matrix(data.complete.columns[-nrow(data.complete.columns),c("GPDIC1","pcecc96","INDPRO","GCEC1","EXPGSC1","IMPGSC1","CPIAUCSL",
-                                  "FEDFUNDS","UNRATE","S_P_500","NASDAQCOM","EXUSEU","EXJPUS","M1REAL", "M2REAL",
-                                  "GS10","BUSLOANSx","consumerx")])
+
+# x <- data.matrix(data.complete.columns[-nrow(data.complete.columns),c("GPDIC1","pcecc96","INDPRO","GCEC1","EXPGSC1","IMPGSC1","CPIAUCSL",
+#                                  "FEDFUNDS","UNRATE","S_P_500","NASDAQCOM","EXUSEU","EXJPUS","M1REAL", "M2REAL",
+#                                  "GS10","BUSLOANSx","consumerx")])
 # we exclude the first row of y for the same reason
 y <- data.complete.columns[-1,"GDPC1"]
 
+# x is not defined because some of the variables we want to use have been deleted, because they contained NAs
+# let's see which variables are still available
+v_noNA_all <- colnames(data.complete.columns)
+v_noNA <- intersect(v_noNA_all, c("GPDIC1","pcecc96","INDPRO","GCEC1","EXPGSC1","IMPGSC1","CPIAUCSL",
+            "FEDFUNDS","UNRATE","S_P_500","NASDAQCOM","EXUSEU","EXJPUS","M1REAL", "M2REAL",
+            "GS10","BUSLOANSx","consumerx"))
+print(paste("Variables available: ", paste(v_noNA, sep=" ", collapse = ", "), sep=""), quote=FALSE)
+
+x <- data.matrix(data.complete.columns[-nrow(data.complete.columns),v_noNA])
 
 # Split data between train and test samples
 # Remark: the fact that each y_t corresponds to a single date x_{t-1} allows to
@@ -131,9 +138,12 @@ parameter_p <- 4
 
 # We bind the lagged values of the explanatory variables
 X_cross_sectional <- X_primitive[parameter_p:(nrow(X_primitive)-1), ] # here lag == 1
+cols <- paste(colnames(X_primitive), "_lag1", sep="")
 for (lag in 2:parameter_p) {
     X_cross_sectional <- cbind(X_cross_sectional, X_primitive[(parameter_p+1-lag):(nrow(X_primitive)-lag), ])
+    cols <- c(cols, paste(colnames(X_primitive), "_lag", lag, sep=""))
 }
+colnames(X_cross_sectional) <- cols
 
 Y_cross_sectional <- Y_primitive[(parameter_p+1):length(Y_primitive)]
 
@@ -157,15 +167,31 @@ produce_cross_sectional_data <- function(data, p, Y_variable=1, X_variables=2:nc
     Y_primitive <- data_nodate[, Y_variable]
 
     X_cross_sectional <- X_primitive[p:(nrow(X_primitive)-1), ] # here lag == 1
+    cols <- paste(colnames(X_primitive), "_lag1", sep="")
     for (lag in 2:p) {
         X_cross_sectional <- cbind(X_cross_sectional, X_primitive[(p+1-lag):(nrow(X_primitive)-lag), ])
+        cols <- c(cols, paste(colnames(X_primitive), "_lag", lag, sep=""))
     }
+    colnames(X_cross_sectional) <- cols
 
     Y_cross_sectional <- Y_primitive[(p+1):length(Y_primitive)]
 
     return(c(X_cross_sectional, Y_cross_sectional))
 }
 
+
+
+### Now, let's adapt the previous scheme to the specific time-series structure
+# using the same variables but with their lagged values
+
+v_noNA_lags <- paste(v_noNA, "_lag1", sep="")
+for (lag in 2:parameter_p) {
+    v_noNA_lags <- c(v_noNA_lags, paste(v_noNA, "_lag", lag, sep=""))
+}
+
+
+x_penalized_linear_2 <- X_cross_sectional[, v_noNA_lags]
+y_penalized_linear_2 <- Y_cross_sectional
 
 
 
