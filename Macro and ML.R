@@ -203,36 +203,38 @@ max_p <- 12 # i.e. 3 years
 ## From there, let us define our train/test strategy
 # We will test our model on the end of the data
 test_size <- 0.1
-test_indices <- ceiling((1-test_size) * nrow(data_nodate)):nrow(data_nodate)
+# # test indices regarding the initial dataset
+# test_indices <- ceiling((1-test_size) * nrow(data_nodate)):nrow(data_nodate)
 
-## Difficulty here : the cross-sectional data is produced on-the-fly for each p
-Y_cross_sectional_test <- Y_cross_sectional[test_indices]
-X_cross_sectional_test <- X_cross_sectional[test_indices, ]
+test_amount <- ceiling(test_size * nrow(data_nodate)) # number of observations in the test set, no matter the lag parameter
+
+# # Difficulty here : the cross-sectional data is produced on-the-fly for each p
+# Y_cross_sectional_test <- Y_cross_sectional[test_indices]
+# X_cross_sectional_test <- X_cross_sectional[test_indices, ]
 
 # Then, let us get our global training set well separated from the test set
 # The earliest possible Y in X_t is Y_{t-max_p},
 # so, with t_0 the first date in the test set,
 # the latest totally separate date to include in the training set is t_0 - max_p - 1
-train_indices <- 1:(test_indices[1] - max_p - 1)
+# train_indices <- 1:(test_indices[1] - max_p - 1)
 
-Y_cross_sectional_train <- Y_cross_sectional[train_indices]
-X_cross_sectional_train <- X_cross_sectional[train_indices, ]
+# Y_cross_sectional_train <- Y_cross_sectional[train_indices]
+# X_cross_sectional_train <- X_cross_sectional[train_indices, ]
 
 ## Now, let us define our cross-validation strategy
 # We choose a LOOCV strategy
 # For each t, we will train on all the data except indices (t-max_p):(t+max_p)
 
 
-# A function to get the train and validation sets for a given t
+# A function to get the train and validation sets for a given date t and number of lags p
 #   X: matrix of covariates
 #   Y: observations of the dependent variable
 #   t: studied date
-#   max_p: maximum lag for the whole CV process
-get_train_validation_sets <- function(X, Y, t, max_p=max_p) {
-    not_train_indices <- max(0,t-max_p):min(t+max_p, nrow(Y)) # don't forget the beginning and end bounds
+#   p: number of lags to consider ; p >= 1
+get_train_validation_sets <- function(X, Y, t, p) {
+    not_train_indices <- max(0,t-p):min(t+p, length(Y)) # don't forget the beginning and end bounds
     return(list(X[-not_train_indices, ], Y[-not_train_indices], X[t, ], Y[t]))
 }
-
 
 
 
@@ -240,10 +242,58 @@ get_train_validation_sets <- function(X, Y, t, max_p=max_p) {
 ### Now, let's adapt the previous scheme to the specific time-series structure
 # using the same variables but with their lagged values
 
-v_noNA_lags <- paste(v_noNA, "_lag1", sep="")
-for (lag in 2:parameter_p) {
-    v_noNA_lags <- c(v_noNA_lags, paste(v_noNA, "_lag", lag, sep=""))
+## A function doing a whole step of cross-validation for parameter p
+# data: dataframe containing the original data
+# Y_indices: column index of the dependent variable
+# X_indices: column indices of the covariates
+# p: number of lags to consider ; p >= 1
+# This function will :
+# - produce pseudo-cross-sectional data adapted to the chosen lag parameter p
+# - determine the related global training set
+# - for each date t in the training set: determine the related train/validation sets, train the model, and compute the mean squared error
+# - return the global mean squared error
+cross_validation_step_linear <- function(data, Y_indices, X_indices, p, lambda_seq=lambda_seq) {
+    # Produce pseudo-cross-sectional data, specially adapted to lag p
+    c(X_cross_sectional, Y_cross_sectional) <- produce_cross_sectional_data(data, p, Y_indices, X_indices)
+
+    # Determine the global training set
+    # The first date in the corresponding test set is nrow(Y_cross_sectional) - test_amount + 1
+    # The earliest Y in X_{t_0} is Y_{t_0-p}, so dates before t_0 - p - 1 are safe
+    train_indices <- 1:(length(Y_cross_sectional) - test_amount - p)
+
+    X_cross_sectional_train <- X_cross_sectional[train_indices, ]
+    Y_cross_sectional_train <- Y_cross_sectional[train_indices]
+
+    # For each date t in the training set: determine the related train/validation sets, train the model, and compute the mean squared error
+    mse <- 0
+    for (t in train_indices) {
+        # Get the train and validation sets for date t (NB : the validation set is a single observation)
+        c(X_train, Y_train, X_validation, Y_validation) <- get_train_validation_sets(X_cross_sectional, Y_cross_sectional, t, p)
+
+        # Train the model
+        ridge_cv <- cv.glmnet(X_train, Y_train, alpha = 0, lambda = lambda_seq) # alpha = 0 for ridge regression
+        ## We let the provided model run its own cross-validation protocol, even though it is not a-priori adapted to our time-series structure
+        # Best lambda value
+        best_lambda <- ridge_cv$lambda.min
+        #Choosing the best model
+        best_fit <- ridge_cv$glmnet.fit
+
+        # Predict on the validation observation
+        pred <- predict(best_fit, newx = X_validation)
+
+        # Actualize the mean squared error
+        mse <- mse + (pred - Y_validation)^2
+    }
+    mse <- mse / length(train_indices)
+    return(mse)
 }
+
+
+
+# v_noNA_lags <- paste(v_noNA, "_lag1", sep="")
+# for (lag in 2:parameter_p) {
+#     v_noNA_lags <- c(v_noNA_lags, paste(v_noNA, "_lag", lag, sep=""))
+# }
 
 
 x_penalized_linear_2 <- X_cross_sectional[, v_noNA_lags]
