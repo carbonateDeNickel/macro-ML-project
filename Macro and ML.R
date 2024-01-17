@@ -5,6 +5,7 @@ library(dplyr) # data manipulation library
 file <- "data/2023-12 - quarter.csv" 
 data.with.definitions <- read.csv(file = file)
 data <- data.with.definitions[3:nrow(data.with.definitions), ] # we drop the first two rows which are not data
+rownames(data) <- NULL # we reset the indices of the rows
 
 colnames(data)
 
@@ -63,16 +64,23 @@ set.seed(123)
 #                                  "GS10","BUSLOANSx","consumerx")])
 # we exclude the first row of y for the same reason
 y <- data.complete.columns[-1,"GDPC1"]
+# We reset the indices of y
+rownames(y) <- NULL
 
 # x is not defined because some of the variables we want to use have been deleted, because they contained NAs
 # let's see which variables are still available
 v_noNA_all <- colnames(data.complete.columns)
-v_noNA <- intersect(v_noNA_all, c("GPDIC1","pcecc96","INDPRO","GCEC1","EXPGSC1","IMPGSC1","CPIAUCSL",
+# Don't forget to include GDPC1 in the list of covariates: it would be too bad not to use the past values of it to predict its future values
+v_noNA <- intersect(v_noNA_all, c("GDPC1", "GPDIC1","pcecc96","INDPRO","GCEC1","EXPGSC1","IMPGSC1","CPIAUCSL",
             "FEDFUNDS","UNRATE","S_P_500","NASDAQCOM","EXUSEU","EXJPUS","M1REAL", "M2REAL",
             "GS10","BUSLOANSx","consumerx"))
 print(paste("Variables available: ", paste(v_noNA, sep=" ", collapse = ", "), sep=""), quote=FALSE)
 
 x <- data.matrix(data.complete.columns[-nrow(data.complete.columns),v_noNA])
+# note : we still exclude the last row of x so as to induce a shift between dependent and independent variables
+# it is useless to reset the indices of x since we only removed the last row
+# rownames(x) <- NULL
+
 
 # Split data between train and test samples
 # Remark: the fact that each y_t corresponds to a single date x_{t-1} allows to
@@ -127,9 +135,13 @@ print(paste("R-squared:", rsquared))
 # where X and Y are "contemporaneous",
 # we need to transform our data, especially the "independent" variables,
 # so that X features the lagged values
+
+# First, let's remove the date column
 data_nodate <- data[, -1]
-X_primitive <- data_nodate[, -1]
-Y_primitive <- data_nodate[, 1]
+
+# we keep in X the first column, which corresponds to y, in order to use its past values
+X_primitive <- data_nodate
+Y_primitive <- data_nodate[, 1] # GDPC1
 
 
 # For the moment, let's set a parameter p to account for the number of lags that we consider.
@@ -151,11 +163,11 @@ Y_cross_sectional <- Y_primitive[(parameter_p+1):length(Y_primitive)]
 
 # A function to industrialize the process
 
-produce_cross_sectional_data <- function(data, p, Y_variable=1, X_variables=2:ncol(data), data_has_date_column=FALSE) {
+produce_cross_sectional_data <- function(data, p, Y_variable=1, X_variables=1:ncol(data), data_has_date_column=FALSE) {
     # data: dataframe containing the data
     # p: number of lags to consider ; p >= 1
     # Y_variable: index of the column of data containing the dependent variable
-    # X_variables: indices of the columns of data containing the independent variables
+    # X_variables: indices of the columns of data containing the independent variables. Don't forget to include Y if you want to use its past values
     # data_has_date_column: whether the first column of data contains the dates or not
     if (data_has_date_column) {
         data_nodate <- data[, -1]
