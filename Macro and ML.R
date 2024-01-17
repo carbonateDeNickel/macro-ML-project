@@ -242,19 +242,23 @@ get_train_validation_sets <- function(X, Y, t, p) {
 ### Now, let's adapt the previous scheme to the specific time-series structure
 # using the same variables but with their lagged values
 
-## A function doing a whole step of cross-validation for parameter p
+# ## One step of cross-validation
+# ### A function doing a whole step of cross-validation for parameter p
 # data: dataframe containing the original data
-# Y_indices: column index of the dependent variable
+# Y_index: column index of the dependent variable
 # X_indices: column indices of the covariates
 # p: number of lags to consider ; p >= 1
+# test_amount: number of observations in the test set (no matter the lag parameter)
+# lambda_seq: sequence of lambda values to consider (for the penalized linear model)
+#
 # This function will :
 # - produce pseudo-cross-sectional data adapted to the chosen lag parameter p
 # - determine the related global training set
 # - for each date t in the training set: determine the related train/validation sets, train the model, and compute the mean squared error
 # - return the global mean squared error
-cross_validation_step_linear <- function(data, Y_indices, X_indices, p, lambda_seq=lambda_seq) {
+cross_validation_step_linear <- function(data, Y_index, X_indices, p, test_amount=test_amount, lambda_seq=lambda_seq) {
     # Produce pseudo-cross-sectional data, specially adapted to lag p
-    c(X_cross_sectional, Y_cross_sectional) <- produce_cross_sectional_data(data, p, Y_indices, X_indices)
+    c(X_cross_sectional, Y_cross_sectional) <- produce_cross_sectional_data(data, p, Y_index, X_indices)
 
     # Determine the global training set
     # The first date in the corresponding test set is nrow(Y_cross_sectional) - test_amount + 1
@@ -288,19 +292,75 @@ cross_validation_step_linear <- function(data, Y_indices, X_indices, p, lambda_s
     return(mse)
 }
 
-
-
+# # The computation of wanted column names is no longer necessary as we select the columns before producing the pseudo-cross-sectional data
 # v_noNA_lags <- paste(v_noNA, "_lag1", sep="")
 # for (lag in 2:parameter_p) {
 #     v_noNA_lags <- c(v_noNA_lags, paste(v_noNA, "_lag", lag, sep=""))
 # }
-
-
-x_penalized_linear_2 <- X_cross_sectional[, v_noNA_lags]
-y_penalized_linear_2 <- Y_cross_sectional
+# x_penalized_linear_2 <- X_cross_sectional[, v_noNA_lags]
+# y_penalized_linear_2 <- Y_cross_sectional
 
 
 
+# ## Whole training and CV (linear model)
+# ### This function proceeds to the whole cross-validation process and produces the best model
+# data: dataframe containing the original data. (It is assumed not to contain date as first column)
+# Y_index: column index of the dependent variable
+# X_indices: column indices of the covariates
+# p_max: maximum number of lags to consider, across the cross-validation process (p will vary from 1 to p_max)
+# test_amount: number of observations in the test set (no matter the lag parameter)
+# lambda_seq: sequence of lambda values to consider (for the penalized linear model)
+#
+# This function will :
+# - execute cross-validation steps for each p from 1 to p_max, and store the mean squared errors of each step
+# - fit the model on the complete training set, for the best p
+# - test the model on the test set and compute the mean squared error
+# - return the best model itself, its mean squared error (on the test set), the best p, the mean squared errors for each p
+whole_training_linear <- function(data=data_nodate, Y_index=1, X_indices=1:ncol(data), p_max=p_max, test_amount=test_amount, lambda_seq=lambda_seq) {
+    # Execute cross-validation steps for each p from 1 to p_max, and store the mean squared errors of each step
+    mse_cv <- rep(0, p_max)
+    for (p in 1:p_max) {
+        mse_cv[p] <- cross_validation_step_linear(data, Y_index, X_indices, p, test_amount, lambda_seq)
+        print(paste("Cross-validation -- step p = ", p, " : done", sep=""))
+        print(paste("---> mean squared error (p = ", p, ") : ", mse_cv[p], sep=""))
+    }
+
+    # Determine the best p
+    best_p <- which.min(mse_cv)
+    print(paste("Cross-validation done. Best p = ", best_p, sep=""))
+
+    # Produce pseudo-cross-sectional data, specially adapted to lag p
+    c(X_cross_sectional, Y_cross_sectional) <- produce_cross_sectional_data(data, best_p, Y_index, X_indices)
+
+    # Determine the training set (there will be no validation sets this time)
+    # The first date in the test set is length(Y_cross_sectional) - test_amount + 1
+    # The earliest Y in X_{t_0} is Y_{t_0-best_p}, so dates before t_0 - best_p - 1 are safe
+    train_indices <- 1:(length(Y_cross_sectional) - test_amount - best_p)
+
+    X_cross_sectional_train <- X_cross_sectional[train_indices, ]
+    Y_cross_sectional_train <- Y_cross_sectional[train_indices]
+
+    # Train the model
+    ridge_cv <- cv.glmnet(X_cross_sectional_train, Y_cross_sectional_train, alpha = 0, lambda = lambda_seq) # alpha = 0 for ridge regression
+    ## We let the provided model run its own cross-validation protocol, even though it is not a-priori adapted to our time-series structure
+    # Best lambda value
+    best_lambda <- ridge_cv$lambda.min
+    #Choosing the best model
+    best_fit <- ridge_cv$glmnet.fit
+
+    # Determine the test set
+    test_indices <- (length(Y_cross_sectional) - test_amount + 1):length(Y_cross_sectional)
+    X_test <- X_cross_sectional[test_indices, ]
+    Y_test <- Y_cross_sectional[test_indices]
+
+    # Predict on the test set
+    pred <- predict(best_fit, newx = X_test)
+
+    # MSE
+    mse_global <- mean((test_predictions - Y_test)^2)
+
+    return(list(best_fit, mse_global, best_p, mse_cv))
+}
 
 
 

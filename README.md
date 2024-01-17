@@ -5,6 +5,7 @@ Authors: Marie CERVONI, Nicolas PRAT, Gabriel SKLÉNARD
 
 ## Points d'attention et corrections à effectuer
 - Bien penser que les données sont des time-series : il faut utiliser un certain nombre de lags, et pas seulement les variables contemporaines !
+- Dans l'usage que l'on fait des modèles linéaires avec pénalisation, on utilise des fonctions pré-existantes, notamment pour ce qui concerne la validation croisée. Ces fonctions, et notamment la manière dont sont générés les training/validation sets, ne sont pas _a priori_ adaptées à des données de séries temporelles. (Pas de problème lorsqu'on considère uniquement 1 lag, puisqu'on a alors un X pour un Y malgré le décalage ; mais à partir de 2 lags, les covariables se recoupent d'une date à la suivante.) On fait le choix de fermer les yeux sur ce point -- ce qu'on peut justifier ainsi : l'usage de modèles linéaires pénalisés en tant que tel n'est pas l'apport principal de notre travail (ce sera plutôt l'approche par NN, ainsi que toute l'algorithmique déployée autour), et par ailleurs il s'agit seulement d'établir des benchmarks, et un contexte algorithmique qui soit adaptable à d'autres méthodes de prédiction.
 
 ## To-do
 - [x] IMPORTANT : Ajouter $y_{t-1}$ à $x_{t-1}$ -- de sorte que la recopie des lags de $x$ comprenne celle de $y$, pour aboutir à l'ensemble des variables utilisées pour prédire $y_t$. Ce serait dommage de ne pas utiliser les valeurs passées de $y$ pour prédire $y_t$ !
