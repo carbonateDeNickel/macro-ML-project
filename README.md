@@ -9,7 +9,7 @@ Authors: Marie CERVONI, Nicolas PRAT, Gabriel SKLÉNARD
 
 ## To-do
 - [x] IMPORTANT : Ajouter $y_{t-1}$ à $x_{t-1}$ -- de sorte que la recopie des lags de $x$ comprenne celle de $y$, pour aboutir à l'ensemble des variables utilisées pour prédire $y_t$. Ce serait dommage de ne pas utiliser les valeurs passées de $y$ pour prédire $y_t$ !
-- [] Mettre en place une procédure de cross-validation pour choisir le nombre de lags $p$
+- [x] Mettre en place une procédure de cross-validation pour choisir le nombre de lags $p$
     - Problème : pour définir les train/validation/test sets, il faut des données, or ces données sont construites à la volée, pour chaque $p$ donné. Il faut donc construire ces ensembles différemment.
     - Contentons-nous de définir les dates de test pour $y_t$, et gardons en mémoire que les données de train n'iront que jusqu'à $t_0 - p - 1$. Les datasets pourront être construits le moment venu.
     - [x] Objectif intermédiaire : construire une fonction qui fait une étape de cross-validation
@@ -18,4 +18,5 @@ Authors: Marie CERVONI, Nicolas PRAT, Gabriel SKLÉNARD
 - [] Implémenter un réseau de neurones linéaire, si possible avec nombre de couches paramétrable pour pouvoir tester plusieurs configurations
 - [] Etablir des règles en termes de contiguité temporelle des données. On prévoit avec combien de données passées ? Toutes ? Avec un réseau récurrent ? Mais alors comment on fait des tests ?
 - [] Comment manipuler et extraire des infos de la rétropropagation du gradient ? Notamment à des fins de recherche des variables les plus influentes
+    - En fait ça n'a pas l'air trop compliqué : de ce que je comprends, il suffirait d'encapsuler dans un contexte "tape" la phase de prédiction sur le _test set_. Ensuite, on demande (pour chaque ligne du test set), le gradient du PIB par rapport à toutes les variables. Puis, pour chaque variable, on fait une moyenne temporelle. Et on obtient le "gradient moyen" du PIB. Tadaa !
 - [] Implémenter le calcul des valeurs de Shapley de tous les enregistrements, si possible d'une manière efficace en temps de calcul
