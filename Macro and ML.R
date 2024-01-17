@@ -139,36 +139,35 @@ print(paste("R-squared:", rsquared))
 # First, let's remove the date column
 data_nodate <- data[, -1]
 
-# we keep in X the first column, which corresponds to y, in order to use its past values
-X_primitive <- data_nodate
-Y_primitive <- data_nodate[, 1] # GDPC1
+# # we keep in X the first column, which corresponds to y, in order to use its past values
+# X_primitive <- data_nodate
+# Y_primitive <- data_nodate[, 1] # GDPC1
 
 
-# For the moment, let's set a parameter p to account for the number of lags that we consider.
-# Then, we can improve the process and make a function from this.
-parameter_p <- 4
+# # For the moment, let's set a parameter p to account for the number of lags that we consider.
+# # Then, we can improve the process and make a function from this.
+# parameter_p <- 4
 
-# We bind the lagged values of the explanatory variables
-X_cross_sectional <- X_primitive[parameter_p:(nrow(X_primitive)-1), ] # here lag == 1
-cols <- paste(colnames(X_primitive), "_lag1", sep="")
-for (lag in 2:parameter_p) {
-    X_cross_sectional <- cbind(X_cross_sectional, X_primitive[(parameter_p+1-lag):(nrow(X_primitive)-lag), ])
-    cols <- c(cols, paste(colnames(X_primitive), "_lag", lag, sep=""))
-}
-colnames(X_cross_sectional) <- cols
+# # We bind the lagged values of the explanatory variables
+# X_cross_sectional <- X_primitive[parameter_p:(nrow(X_primitive)-1), ] # here lag == 1
+# cols <- paste(colnames(X_primitive), "_lag1", sep="")
+# for (lag in 2:parameter_p) {
+#     X_cross_sectional <- cbind(X_cross_sectional, X_primitive[(parameter_p+1-lag):(nrow(X_primitive)-lag), ])
+#     cols <- c(cols, paste(colnames(X_primitive), "_lag", lag, sep=""))
+# }
+# colnames(X_cross_sectional) <- cols
 
-Y_cross_sectional <- Y_primitive[(parameter_p+1):length(Y_primitive)]
+# Y_cross_sectional <- Y_primitive[(parameter_p+1):length(Y_primitive)]
 
 
 
-# A function to industrialize the process
-
-produce_cross_sectional_data <- function(data, p, Y_variable=1, X_variables=1:ncol(data), data_has_date_column=FALSE) {
+# A function to produce pseudo-cross-sectional data from time-series data
     # data: dataframe containing the data
     # p: number of lags to consider ; p >= 1
     # Y_variable: index of the column of data containing the dependent variable
     # X_variables: indices of the columns of data containing the independent variables. Don't forget to include Y if you want to use its past values
     # data_has_date_column: whether the first column of data contains the dates or not
+produce_cross_sectional_data <- function(data, p, Y_variable=1, X_variables=1:ncol(data), data_has_date_column=FALSE) {
     if (data_has_date_column) {
         data_nodate <- data[, -1]
     } else {
@@ -188,8 +187,53 @@ produce_cross_sectional_data <- function(data, p, Y_variable=1, X_variables=1:nc
 
     Y_cross_sectional <- Y_primitive[(p+1):length(Y_primitive)]
 
-    return(c(X_cross_sectional, Y_cross_sectional))
+    return(list(X_cross_sectional, Y_cross_sectional))
 }
+
+
+
+### We are now coming to 2 sensitive points :
+## - the train/test split with time-series data
+## - the choice of a strategy for cross-validation, involving train/validation splits
+
+# Let us fix a maximum lag parameter
+# keeping in mind that our data is quarterly
+max_p <- 12 # i.e. 3 years
+
+## From there, let us define our train/test strategy
+# We will test our model on the end of the data
+test_size <- 0.1
+test_indices <- ceiling((1-test_size) * nrow(data_nodate)):nrow(data_nodate)
+
+## Difficulty here : the cross-sectional data is produced on-the-fly for each p
+Y_cross_sectional_test <- Y_cross_sectional[test_indices]
+X_cross_sectional_test <- X_cross_sectional[test_indices, ]
+
+# Then, let us get our global training set well separated from the test set
+# The earliest possible Y in X_t is Y_{t-max_p},
+# so, with t_0 the first date in the test set,
+# the latest totally separate date to include in the training set is t_0 - max_p - 1
+train_indices <- 1:(test_indices[1] - max_p - 1)
+
+Y_cross_sectional_train <- Y_cross_sectional[train_indices]
+X_cross_sectional_train <- X_cross_sectional[train_indices, ]
+
+## Now, let us define our cross-validation strategy
+# We choose a LOOCV strategy
+# For each t, we will train on all the data except indices (t-max_p):(t+max_p)
+
+
+# A function to get the train and validation sets for a given t
+#   X: matrix of covariates
+#   Y: observations of the dependent variable
+#   t: studied date
+#   max_p: maximum lag for the whole CV process
+get_train_validation_sets <- function(X, Y, t, max_p=max_p) {
+    not_train_indices <- max(0,t-max_p):min(t+max_p, nrow(Y)) # don't forget the beginning and end bounds
+    return(list(X[-not_train_indices, ], Y[-not_train_indices], X[t, ], Y[t]))
+}
+
+
 
 
 
@@ -204,6 +248,8 @@ for (lag in 2:parameter_p) {
 
 x_penalized_linear_2 <- X_cross_sectional[, v_noNA_lags]
 y_penalized_linear_2 <- Y_cross_sectional
+
+
 
 
 
