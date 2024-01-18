@@ -416,8 +416,10 @@ print(paste("Mean squared errors (validation process) for each p : ", paste(mse_
 
 
 ### Neural Networks
+# library(reticulate)
 library(tensorflow)
 library(keras)
+# use_python(file.choose())
 
 # ## One step of cross-validation
 # ### A function doing a whole step of cross-validation for parameter p
@@ -527,11 +529,11 @@ cross_validation_step_nn <- function(data=data_nodate_global, Y_index=1, X_indic
 # - fit the model on the complete training set, for the best p
 # - test the model on the test set and compute the mean squared error
 # - return the best model itself, its mean squared error (on the test set), the best p, the mean squared errors for each p
-whole_training_nn <- function(data=data_nodate_global, Y_index=1, X_indices=1:ncol(data_nodate_global), p_max=p_max_global, test_amount=test_amount_global, lambda_seq=lambda_seq_global, validation_proportion=0.05, epochs_nn=20, batch_size_nn=64) {
+whole_training_nn <- function(data=data_nodate_global, Y_index=1, X_indices=1:ncol(data_nodate_global), p_max=p_max_global, test_amount=test_amount_global, validation_proportion=0.05, epochs_nn=20, batch_size_nn=64) {
     # Execute cross-validation steps for each p from 1 to p_max, and store the mean squared errors of each step
     mse_cv <- rep(0.0, p_max)
     for (p in 1:p_max) {
-        mse_cv[p] <- cross_validation_step_nn(data, Y_index, X_indices, p, test_amount, lambda_seq, validation_proportion, epochs_nn, batch_size_nn)
+        mse_cv[p] <- cross_validation_step_nn(data, Y_index, X_indices, p, test_amount, validation_proportion, epochs_nn, batch_size_nn)
         print(paste("Cross-validation -- step p = ", p, " : done", sep=""), quote=FALSE)
         print(paste("---> mean squared error (p = ", p, ") : ", mse_cv[p], sep=""), quote=FALSE)
         print("-----------------------------------------------", quote=FALSE)
