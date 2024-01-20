@@ -605,45 +605,46 @@ whole_training_nn <- function(data=data_nodate_global, Y_index=1, X_indices=1:nc
   
   print("(Final) model trained", quote=FALSE)
   
-  # Determine the entire dataset
-  X_all <- data.matrix(X_cross_sectional)
-  Y_all <- Y_cross_sectional
+  # Determine the test set
+  test_indices <- (length(Y_cross_sectional) - test_amount + 1):length(Y_cross_sectional)
+  X_test <- X_cross_sectional[test_indices, ]
+  Y_test <- Y_cross_sectional[test_indices]
   
-  # Predict on the entire dataset
-  pred_all <- model %>% predict(X_all)
+  X_test <- data.matrix(X_test)
   
-  # MSE on the entire dataset
-  mse_global_all <- mean((pred_all - Y_all)^2)
+  # Predict on the test set
+  pred <- model %>% predict(X_test)
   
-  if (compute_gradients) {
-    # Calculate the gradients on the entire dataset
-    gradients_all <- K$gradients(model$output, model$input)
-    gradients_list_all <- lapply(gradients_all, function(gradient) {
-      K$function(model$input, gradient)
-    })
-    
-    # Calculate the mean gradients on inputs over the entire dataset
-    mean_gradients_final_all <- calculate_mean_gradients(gradients_list_all)
-  } else {
-    mean_gradients_final_all <- NULL
-  }
+  # MSE
+  mse_global <- mean((pred - Y_test)^2)
   
-  # Return the model, MSE on the test set, MSE on the entire dataset, best p, MSE in cross-validation, and mean gradients on inputs
-  return(list(model, mse_global, mse_global_all, best_p, mse_cv, mean_gradients_final_all))
+  return(list(model, mse_global, best_p, mse_cv, X_cross_sectional, Y_cross_sectional))
 }
 
-# ...
-
-res_whole_training_nn <- whole_training_nn(compute_gradients = TRUE)
+res_whole_training_nn <- whole_training_nn()
 final_model_nn <- res_whole_training_nn[[1]]
 mse_global_nn <- res_whole_training_nn[[2]]
 best_p_nn <- res_whole_training_nn[[3]]
 mse_cv_nn <- res_whole_training_nn[[4]]
-mean_gradients_final_nn <- res_whole_training_nn[[5]]
+X_cross_sectional <- res_whole_training_nn[[5]]
+Y_cross_sectional <- res_whole_training_nn[[6]]
 
 print(paste("Mean squared error (on the test set) of the best model : ", mse_global_nn, sep=""), quote=FALSE)
 print(paste("Best p : ", best_p_nn, sep=""), quote=FALSE)
 print(paste("Mean squared errors (validation process) for each p : ", paste(mse_cv_nn, sep="", collapse=", "), sep=""), quote=FALSE)
 
-print("Mean gradients during the test phase:", quote=FALSE)
-print(mean_gradients_final_nn, quote=FALSE)
+# Prediction on all the data
+X_all <- data.matrix(X_cross_sectional)
+pred_all <- final_model_nn %>% predict(X_all)
+
+# MSE on all the data
+mse_global_all <- mean((pred_all - Y_cross_sectional)^2)
+print(paste("Mean squared error on the entire dataset : ", mse_global_all, sep=""), quote=FALSE)
+
+# Gradients
+gradients_all <- K$gradients(final_model_nn$get_layer("output")$output, final_model_nn$input)
+gradients_list_all <- lapply(gradients_all, function(gradient) gradient(final_model_nn$input))
+mean_gradients_final_all <- calculate_mean_gradients(gradients_list_all)
+
+print("Mean gradients on the entire dataset:", quote=FALSE)
+print(mean_gradients_final_all, quote=FALSE)
