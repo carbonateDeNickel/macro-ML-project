@@ -509,8 +509,12 @@ cross_validation_step_nn <- function(data=data_nodate_global, Y_index=1, X_indic
   return(mse)
 }
 
+
+##tensorFlowversion
+
+
 library(tensorflow)
-library(keras)
+library(tf)
 
 # calculate the mean of gradients
 calculate_mean_gradients <- function(gradients_list) {
@@ -648,3 +652,116 @@ mean_gradients_final_all <- calculate_mean_gradients(gradients_list_all)
 
 print("Mean gradients on the entire dataset:", quote=FALSE)
 print(mean_gradients_final_all, quote=FALSE)
+
+
+
+library(tf)
+
+# calculate the mean of gradients
+calculate_mean_gradients <- function(gradients_list) {
+  if (length(gradients_list) > 0) {
+    mean_gradients <- Reduce(`+`, gradients_list) / length(gradients_list)
+    return(mean_gradients)
+  } else {
+    return(NULL)
+  }
+}
+
+# Whole training and CV (NN) using TensorFlow
+whole_training_nn_tf <- function(data = data_nodate_global, Y_index = 1, X_indices = 1:ncol(data_nodate_global),
+                                 p_max = p_max_global, test_amount = test_amount_global,
+                                 validation_proportion = 0.05, epochs_nn = 20, batch_size_nn = 64,
+                                 compute_gradients = FALSE) {
+  # Execute cross-validation steps for each p from 1 to p_max, and store the mean squared errors of each step
+  mse_cv <- rep(0.0, p_max)
+  gradients_list <- list()
+  for (p in 1:p_max) {
+    result <- cross_validation_step_nn_tf(data, Y_index, X_indices, p, test_amount, validation_proportion, epochs_nn, batch_size_nn)
+    mse_cv[p] <- result[[1]]
+    mean_gradients <- calculate_mean_gradients(result[[2]])
+    gradients_list[[p]] <- mean_gradients
+    print(paste("Cross-validation -- step p = ", p, " : done", sep = ""), quote = FALSE)
+    print(paste("---> mean squared error (p = ", p, ") : ", mse_cv[p], sep = ""), quote = FALSE)
+    print("-----------------------------------------------", quote = FALSE)
+  }
+  
+  print("", quote = FALSE)
+  
+  # Determine the best p
+  best_p <- which.min(mse_cv)
+  print(paste("Cross-validation done. Best p = ", best_p, sep = ""), quote = FALSE)
+  
+  # Produce pseudo-cross-sectional data, specially adapted to lag p
+  res <- produce_cross_sectional_data(data, best_p, Y_index, X_indices)
+  X_cross_sectional <- res[[1]]
+  Y_cross_sectional <- res[[2]]
+  
+  # Determine the training set (there will be no validation sets this time)
+  # The first date in the test set is length(Y_cross_sectional) - test_amount + 1
+  # The earliest Y in X_{t_0} is Y_{t_0-best_p}, so dates before t_0 - best_p - 1 are safe
+  train_indices <- 1:(length(Y_cross_sectional) - test_amount - best_p)
+  
+  X_train <- X_cross_sectional[train_indices, ]
+  Y_train <- Y_cross_sectional[train_indices]
+  
+  X_train <- tf$constant(X_train)
+  Y_train <- tf$constant(Y_train)
+  
+  print("Creating (final) model and preparing training...", quote = FALSE)
+  # Randomize the order of rows in X_train and Y_train, so that the time order of the original data cannot have an influence
+  random_indices <- sample(nrow(X_train))
+  X_train <- X_train[random_indices, , drop = FALSE]
+  Y_train <- Y_train[random_indices, , drop = FALSE]
+  
+  # Define the neural network model 
+  model <- tf$keras$Sequential()
+  model$add(tf$keras$layers$Dense(units = 50, activation = "relu", input_shape = dim(X_train)[2]))
+  model$add(tf$keras$layers$Dense(units = 20, activation = "relu"))
+  model$add(tf$keras$layers$Dense(units = 1, activation = "linear"))
+  
+  # Compile the model
+  model$compile(
+    optimizer = 'adam',
+    loss = 'mean_squared_error'
+  )
+  
+  print("Creation + preparation : done -- Starting training model...", quote = FALSE)
+  
+  # Train the model
+  history <- model$fit(
+    x = X_train,
+    y = Y_train,
+    epochs = epochs_nn,
+    batch_size = batch_size_nn
+  )
+  
+  print("(Final) model trained", quote = FALSE)
+  
+  # Determine the test set
+  test_indices <- (length(Y_cross_sectional) - test_amount + 1):length(Y_cross_sectional)
+  X_test <- X_cross_sectional[test_indices, ]
+  Y_test <- Y_cross_sectional[test_indices]
+  
+  X_test <- tf$constant(X_test)
+  
+  # Predict on the test set
+  pred <- model$predict(X_test)
+  
+  # MSE
+  mse_global <- mean((pred - Y_test)^2)
+  
+  return(list(model, mse_global, best_p, mse_cv, X_cross_sectional, Y_cross_sectional))
+}
+
+res_whole_training_nn_tf <- whole_training_nn_tf()
+final_model_nn_tf <- res_whole_training_nn_tf[[1]]
+mse_global_nn_tf <- res_whole_training_nn_tf[[2]]
+best_p_nn_tf <- res_whole_training_nn_tf[[3]]
+mse_cv_nn_tf <- res_whole_training_nn_tf[[4]]
+X_cross_sectional_tf <- res_whole_training_nn_tf[[5]]
+Y_cross_sectional_tf <- res_whole_training_nn_tf[[6]]
+
+
+print(paste("Mean squared error (on the test set) of the best model : ", mse_global_nn_tf, sep = ""), quote = FALSE)
+print(paste("Best p : ", best_p_nn_tf, sep = ""), quote = FALSE)
+print(paste("Mean squared errors (validation process) for each p : ", paste(mse_cv_nn_tf, sep = "", collapse = ", "), sep = ""), quote = FALSE)
