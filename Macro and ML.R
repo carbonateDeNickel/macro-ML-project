@@ -667,7 +667,7 @@ predict_with_gradients_2 <- function(model, data_matrix) {
 
 
 predict_with_gradients_3 <- function(model, data_matrix) {
-  # Convert data to matrix if not already
+  # Convert data to tensor
   data_matrix <- as.tensor(data_matrix)
 
   # Make predictions on the entire dataset and retain gradients
