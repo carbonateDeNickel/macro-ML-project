@@ -1,5 +1,7 @@
+
 rm(list=ls()) # clear the environment
 
+library(devtools)
 library(dplyr) # data manipulation library
 
 
@@ -201,7 +203,7 @@ produce_cross_sectional_data <- function(data, p, Y_variable=1, X_variables=1:nc
 
 # Let us fix a maximum lag parameter
 # keeping in mind that our data is quarterly
-p_max_global <- 12 # i.e. 3 years
+p_max_global <- 2 # 12 quarters i.e. 3 years
 
 ## From there, let us define our train/test strategy
 # We will test our model on the end of the data
@@ -416,9 +418,23 @@ print(paste("Mean squared errors (validation process) for each p : ", paste(mse_
 
 
 ### Neural Networks
-# library(reticulate)
-library(tensorflow)
+
+# Tuto config :
+# - install latest R version (4.3.2)
+# - install rtools with install('devtools')
+# - install library keras : install.package('keras')
+# - see this link https://github.com/rstudio/keras/blob/main/.github/ISSUE_TEMPLATE/installation-issue.md
+# - but run install_keras() and not keras3::install_keras()
+
 library(keras)
+# you can try this if it doesn't run : use_condaenv("r-tensorflow")
+
+# Legacy, not sure it helps :
+#conda_create("r-scrublet")
+#conda_install(envname='r-scrublet', package='numpy', "pip","git")
+#conda_python(envname='r-scrublet')
+
+
 # use_python(file.choose())
 
 # ## One step of cross-validation
@@ -479,7 +495,7 @@ cross_validation_step_nn <- function(data=data_nodate_global, Y_index=1, X_indic
     # Define the neural network model
     model <- keras_model_sequential()
     model %>%
-      layer_dense(units = 50, activation = "relu", input_shape = ncol(X_train)) %>%
+      layer_dense(units = 201, activation = "relu", input_shape = ncol(X_train)) %>%
       layer_dense(units = 20, activation = "relu") %>%
       layer_dense(units = 1)
     
@@ -510,21 +526,6 @@ cross_validation_step_nn <- function(data=data_nodate_global, Y_index=1, X_indic
 }
 
 
-##tensorFlowversion
-
-
-library(tensorflow)
-library(tf)
-
-# calculate the mean of gradients
-calculate_mean_gradients <- function(gradients_list) {
-  if (length(gradients_list) > 0) {
-    mean_gradients <- Reduce(`+`, gradients_list) / length(gradients_list)
-    return(mean_gradients)
-  } else {
-    return(NULL)
-  }
-}
 
 
 # ## Whole training and CV (NN)
@@ -544,15 +545,11 @@ calculate_mean_gradients <- function(gradients_list) {
 # - fit the model on the complete training set, for the best p
 # - test the model on the test set and compute the mean squared error
 # - return the best model itself, its mean squared error (on the test set), the best p, the mean squared errors for each p
-whole_training_nn <- function(data=data_nodate_global, Y_index=1, X_indices=1:ncol(data_nodate_global), p_max=p_max_global, test_amount=test_amount_global, validation_proportion=0.05, epochs_nn=20, batch_size_nn=64, compute_gradients = FALSE) {
+whole_training_nn <- function(data=data_nodate_global, Y_index=1, X_indices=1:ncol(data_nodate_global), p_max=p_max_global, test_amount=test_amount_global, validation_proportion=0.05, epochs_nn=20, batch_size_nn=64) {
   # Execute cross-validation steps for each p from 1 to p_max, and store the mean squared errors of each step
   mse_cv <- rep(0.0, p_max)
-  gradients_list <- list()
   for (p in 1:p_max) {
-    result <- cross_validation_step_nn(data, Y_index, X_indices, p, test_amount, validation_proportion, epochs_nn, batch_size_nn)
-    mse_cv[p] <- result[[1]]
-    mean_gradients <- calculate_mean_gradients(result[[2]])
-    gradients_list[[p]] <- mean_gradients
+    mse_cv[p] <- cross_validation_step_nn(data, Y_index, X_indices, p, test_amount, validation_proportion, epochs_nn, batch_size_nn)
     print(paste("Cross-validation -- step p = ", p, " : done", sep=""), quote=FALSE)
     print(paste("---> mean squared error (p = ", p, ") : ", mse_cv[p], sep=""), quote=FALSE)
     print("-----------------------------------------------", quote=FALSE)
@@ -586,10 +583,11 @@ whole_training_nn <- function(data=data_nodate_global, Y_index=1, X_indices=1:nc
   Y_train <- Y_train[random_indices]
   
   # Define the neural network model
-  model <- keras_model_sequential() %>%
-    layer_dense(units = 50, activation = "relu", input_shape = ncol(X_train)) %>%
+  model <- keras_model_sequential()
+  model %>%
+    layer_dense(units = 201, activation = "relu", input_shape = ncol(X_train)) %>%
     layer_dense(units = 20, activation = "relu") %>%
-    layer_dense(units = 1, name = "output")  # Provide a name to the output layer
+    layer_dense(units = 1)
   
   # Compile the model
   model %>% compile(
@@ -609,6 +607,7 @@ whole_training_nn <- function(data=data_nodate_global, Y_index=1, X_indices=1:nc
   
   print("(Final) model trained", quote=FALSE)
   
+  
   # Determine the test set
   test_indices <- (length(Y_cross_sectional) - test_amount + 1):length(Y_cross_sectional)
   X_test <- X_cross_sectional[test_indices, ]
@@ -622,7 +621,7 @@ whole_training_nn <- function(data=data_nodate_global, Y_index=1, X_indices=1:nc
   # MSE
   mse_global <- mean((pred - Y_test)^2)
   
-  return(list(model, mse_global, best_p, mse_cv, X_cross_sectional, Y_cross_sectional))
+  return(list(model, mse_global, best_p, mse_cv))
 }
 
 res_whole_training_nn <- whole_training_nn()
@@ -630,138 +629,56 @@ final_model_nn <- res_whole_training_nn[[1]]
 mse_global_nn <- res_whole_training_nn[[2]]
 best_p_nn <- res_whole_training_nn[[3]]
 mse_cv_nn <- res_whole_training_nn[[4]]
-X_cross_sectional <- res_whole_training_nn[[5]]
-Y_cross_sectional <- res_whole_training_nn[[6]]
 
 print(paste("Mean squared error (on the test set) of the best model : ", mse_global_nn, sep=""), quote=FALSE)
 print(paste("Best p : ", best_p_nn, sep=""), quote=FALSE)
 print(paste("Mean squared errors (validation process) for each p : ", paste(mse_cv_nn, sep="", collapse=", "), sep=""), quote=FALSE)
 
-# Prediction on all the data
-X_all <- data.matrix(X_cross_sectional)
-pred_all <- final_model_nn %>% predict(X_all)
-
-# MSE on all the data
-mse_global_all <- mean((pred_all - Y_cross_sectional)^2)
-print(paste("Mean squared error on the entire dataset : ", mse_global_all, sep=""), quote=FALSE)
-
-# Gradients
-gradients_all <- K$gradients(final_model_nn$get_layer("output")$output, final_model_nn$input)
-gradients_list_all <- lapply(gradients_all, function(gradient) gradient(final_model_nn$input))
-mean_gradients_final_all <- calculate_mean_gradients(gradients_list_all)
-
-print("Mean gradients on the entire dataset:", quote=FALSE)
-print(mean_gradients_final_all, quote=FALSE)
-
-
-
-library(tf)
-
-# calculate the mean of gradients
-calculate_mean_gradients <- function(gradients_list) {
-  if (length(gradients_list) > 0) {
-    mean_gradients <- Reduce(`+`, gradients_list) / length(gradients_list)
-    return(mean_gradients)
-  } else {
-    return(NULL)
-  }
+###
+# Function to make predictions on the entire dataset and retain gradients
+predict_with_gradients_1 <- function(model, data_matrix) {
+  # Convert data to matrix if not already
+  data_matrix <- data.matrix(data_matrix)
+  
+  # Make predictions on the entire dataset
+  predictions <- model %>% predict(data_matrix)
+  
+  # Compute gradients of the output with respect to the input
+  gradients <- model %>% layer_output_gradients(predictions)
+  
+  return(list(predictions, gradients))
 }
 
-# Whole training and CV (NN) using TensorFlow
-whole_training_nn_tf <- function(data = data_nodate_global, Y_index = 1, X_indices = 1:ncol(data_nodate_global),
-                                 p_max = p_max_global, test_amount = test_amount_global,
-                                 validation_proportion = 0.05, epochs_nn = 20, batch_size_nn = 64,
-                                 compute_gradients = FALSE) {
-  # Execute cross-validation steps for each p from 1 to p_max, and store the mean squared errors of each step
-  mse_cv <- rep(0.0, p_max)
-  gradients_list <- list()
-  for (p in 1:p_max) {
-    result <- cross_validation_step_nn_tf(data, Y_index, X_indices, p, test_amount, validation_proportion, epochs_nn, batch_size_nn)
-    mse_cv[p] <- result[[1]]
-    mean_gradients <- calculate_mean_gradients(result[[2]])
-    gradients_list[[p]] <- mean_gradients
-    print(paste("Cross-validation -- step p = ", p, " : done", sep = ""), quote = FALSE)
-    print(paste("---> mean squared error (p = ", p, ") : ", mse_cv[p], sep = ""), quote = FALSE)
-    print("-----------------------------------------------", quote = FALSE)
-  }
+predict_with_gradients_2 <- function(model, data_matrix) {
+  # Convert data to matrix if not already
+  data_matrix <- data.matrix(data_matrix)
   
-  print("", quote = FALSE)
+  # Make predictions on the entire dataset
+  predictions <- model %>% predict(data_matrix)
   
-  # Determine the best p
-  best_p <- which.min(mse_cv)
-  print(paste("Cross-validation done. Best p = ", best_p, sep = ""), quote = FALSE)
+  # Compute gradients with respect to the model's trainable parameters
+  gradients <- gradient(model, data_matrix)
   
-  # Produce pseudo-cross-sectional data, specially adapted to lag p
-  res <- produce_cross_sectional_data(data, best_p, Y_index, X_indices)
-  X_cross_sectional <- res[[1]]
-  Y_cross_sectional <- res[[2]]
-  
-  # Determine the training set (there will be no validation sets this time)
-  # The first date in the test set is length(Y_cross_sectional) - test_amount + 1
-  # The earliest Y in X_{t_0} is Y_{t_0-best_p}, so dates before t_0 - best_p - 1 are safe
-  train_indices <- 1:(length(Y_cross_sectional) - test_amount - best_p)
-  
-  X_train <- X_cross_sectional[train_indices, ]
-  Y_train <- Y_cross_sectional[train_indices]
-  
-  X_train <- tf$constant(X_train)
-  Y_train <- tf$constant(Y_train)
-  
-  print("Creating (final) model and preparing training...", quote = FALSE)
-  # Randomize the order of rows in X_train and Y_train, so that the time order of the original data cannot have an influence
-  random_indices <- sample(nrow(X_train))
-  X_train <- X_train[random_indices, , drop = FALSE]
-  Y_train <- Y_train[random_indices, , drop = FALSE]
-  
-  # Define the neural network model 
-  model <- tf$keras$Sequential()
-  model$add(tf$keras$layers$Dense(units = 50, activation = "relu", input_shape = dim(X_train)[2]))
-  model$add(tf$keras$layers$Dense(units = 20, activation = "relu"))
-  model$add(tf$keras$layers$Dense(units = 1, activation = "linear"))
-  
-  # Compile the model
-  model$compile(
-    optimizer = 'adam',
-    loss = 'mean_squared_error'
-  )
-  
-  print("Creation + preparation : done -- Starting training model...", quote = FALSE)
-  
-  # Train the model
-  history <- model$fit(
-    x = X_train,
-    y = Y_train,
-    epochs = epochs_nn,
-    batch_size = batch_size_nn
-  )
-  
-  print("(Final) model trained", quote = FALSE)
-  
-  # Determine the test set
-  test_indices <- (length(Y_cross_sectional) - test_amount + 1):length(Y_cross_sectional)
-  X_test <- X_cross_sectional[test_indices, ]
-  Y_test <- Y_cross_sectional[test_indices]
-  
-  X_test <- tf$constant(X_test)
-  
-  # Predict on the test set
-  pred <- model$predict(X_test)
-  
-  # MSE
-  mse_global <- mean((pred - Y_test)^2)
-  
-  return(list(model, mse_global, best_p, mse_cv, X_cross_sectional, Y_cross_sectional))
+  return(list(predictions, gradients))
 }
 
-res_whole_training_nn_tf <- whole_training_nn_tf()
-final_model_nn_tf <- res_whole_training_nn_tf[[1]]
-mse_global_nn_tf <- res_whole_training_nn_tf[[2]]
-best_p_nn_tf <- res_whole_training_nn_tf[[3]]
-mse_cv_nn_tf <- res_whole_training_nn_tf[[4]]
-X_cross_sectional_tf <- res_whole_training_nn_tf[[5]]
-Y_cross_sectional_tf <- res_whole_training_nn_tf[[6]]
 
+# Make predictions on the entire dataset with the trained model
+# Assuming data_nodate_global has dimensions [n_samples, n_features]
+res_predictions <- predict_with_gradients_2(final_model_nn, data_nodate_global)
 
-print(paste("Mean squared error (on the test set) of the best model : ", mse_global_nn_tf, sep = ""), quote = FALSE)
-print(paste("Best p : ", best_p_nn_tf, sep = ""), quote = FALSE)
-print(paste("Mean squared errors (validation process) for each p : ", paste(mse_cv_nn_tf, sep = "", collapse = ", "), sep = ""), quote = FALSE)
+# Extract predictions and gradients
+predictions_nn <- res_predictions[[1]]
+gradients_nn <- res_predictions[[2]]
+
+# Compute the mean of gradients component-wise
+mean_gradients <- lapply(gradients_nn, function(grad) {
+  mean(grad, na.rm = TRUE)
+})
+
+# Print or use the predictions and mean_gradients as needed
+cat("Predictions on the entire dataset:\n")
+print(predictions_nn)
+
+cat("Mean of gradients component-wise:\n")
+print(mean_gradients)
