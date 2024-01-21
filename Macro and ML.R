@@ -427,6 +427,7 @@ print(paste("Mean squared errors (validation process) for each p : ", paste(mse_
 # - but run install_keras() and not keras3::install_keras()
 
 library(keras)
+library(tensorflow)
 # you can try this if it doesn't run : use_condaenv("r-tensorflow")
 
 # Legacy, not sure it helps :
@@ -436,6 +437,8 @@ library(keras)
 
 
 # use_python(file.choose())
+
+
 
 # ## One step of cross-validation
 # ### A function doing a whole step of cross-validation for parameter p
@@ -663,22 +666,39 @@ predict_with_gradients_2 <- function(model, data_matrix) {
 }
 
 
+predict_with_gradients_3 <- function(model, data_matrix) {
+  # Convert data to matrix if not already
+  data_matrix <- as.tensor(data_matrix)
+
+  # Make predictions on the entire dataset and retain gradients
+  with(tf$GradientTape() %as% tape, {
+  tape$watch(data_matrix)
+  pred <- model(data_matrix)
+  })
+  
+  grads <- tape$gradient(pred, data_matrix)
+
+  # We average column by column, i.e. variable by variable
+  mean_gradients <- colMeans(grads, na.rm = TRUE)
+
+  return(list(pred, mean_gradients))
+
 # Make predictions on the entire dataset with the trained model
 # Assuming data_nodate_global has dimensions [n_samples, n_features]
-res_predictions <- predict_with_gradients_2(final_model_nn, data_nodate_global)
+res_predictions <- predict_with_gradients_3(final_model_nn, data_nodate_global)
 
 # Extract predictions and gradients
 predictions_nn <- res_predictions[[1]]
-gradients_nn <- res_predictions[[2]]
+mean_gradients_nn <- res_predictions[[2]]
 
-# Compute the mean of gradients component-wise
-mean_gradients <- lapply(gradients_nn, function(grad) {
-  mean(grad, na.rm = TRUE)
-})
+# # Compute the mean of gradients component-wise
+# mean_gradients <- lapply(gradients_nn, function(grad) {
+#   mean(grad, na.rm = TRUE)
+# })
 
 # Print or use the predictions and mean_gradients as needed
 cat("Predictions on the entire dataset:\n")
 print(predictions_nn)
 
 cat("Mean of gradients component-wise:\n")
-print(mean_gradients)
+print(mean_gradients_nn)
