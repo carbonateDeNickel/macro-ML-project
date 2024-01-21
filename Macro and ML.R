@@ -682,6 +682,7 @@ predict_with_gradients_3 <- function(model, data_matrix) {
   mean_gradients <- colMeans(grads, na.rm = TRUE)
 
   return(list(pred, mean_gradients))
+}
 
 # Make predictions on the entire dataset with the trained model
 # Assuming data_nodate_global has dimensions [n_samples, n_features]
