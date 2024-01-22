@@ -203,7 +203,7 @@ produce_cross_sectional_data <- function(data, p, Y_variable=1, X_variables=1:nc
 
 # Let us fix a maximum lag parameter
 # keeping in mind that our data is quarterly
-p_max_global <- 2 # 12 quarters i.e. 3 years
+p_max_global <- 12 # 12 quarters i.e. 3 years
 
 ## From there, let us define our train/test strategy
 # We will test our model on the end of the data
@@ -498,7 +498,7 @@ cross_validation_step_nn <- function(data=data_nodate_global, Y_index=1, X_indic
     # Define the neural network model
     model <- keras_model_sequential()
     model %>%
-      layer_dense(units = 201, activation = "relu", input_shape = ncol(X_train)) %>%
+      layer_dense(units = 50, activation = "relu", input_shape = ncol(X_train)) %>%
       layer_dense(units = 20, activation = "relu") %>%
       layer_dense(units = 1)
     
@@ -588,7 +588,7 @@ whole_training_nn <- function(data=data_nodate_global, Y_index=1, X_indices=1:nc
   # Define the neural network model
   model <- keras_model_sequential()
   model %>%
-    layer_dense(units = 201, activation = "relu", input_shape = ncol(X_train)) %>%
+    layer_dense(units = 50, activation = "relu", input_shape = ncol(X_train)) %>%
     layer_dense(units = 20, activation = "relu") %>%
     layer_dense(units = 1)
   
@@ -637,7 +637,11 @@ print(paste("Mean squared error (on the test set) of the best model : ", mse_glo
 print(paste("Best p : ", best_p_nn, sep=""), quote=FALSE)
 print(paste("Mean squared errors (validation process) for each p : ", paste(mse_cv_nn, sep="", collapse=", "), sep=""), quote=FALSE)
 
-###
+
+
+
+###We did not manage to make this last part work :
+
 # Function to make predictions on the entire dataset and retain gradients
 predict_with_gradients_1 <- function(model, data_matrix) {
   # Convert data to matrix if not already
@@ -668,19 +672,19 @@ predict_with_gradients_2 <- function(model, data_matrix) {
 
 predict_with_gradients_3 <- function(model, data_matrix) {
   # Convert data to tensor
-  data_matrix <- as.tensor(data_matrix)
-
+  data_matrix <- as_tensor(data_matrix)
+  
   # Make predictions on the entire dataset and retain gradients
   with(tf$GradientTape() %as% tape, {
-  tape$watch(data_matrix)
-  pred <- model(data_matrix)
+    tape$watch(data_matrix)
+    pred <- model(data_matrix)
   })
   
   grads <- tape$gradient(pred, data_matrix)
-
+  
   # We average column by column, i.e. variable by variable
   mean_gradients <- colMeans(grads, na.rm = TRUE)
-
+  
   return(list(pred, mean_gradients))
 }
 
